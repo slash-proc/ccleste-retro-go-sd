@@ -14,11 +14,7 @@ HOST_CC    ?= cc
 
 HOST_BUILD_DIR := build/host/$(PROJECT_KIND)_sdl$(HOST_SDL)
 
-ifeq ($(PROJECT_KIND),homebrew)
-HOST_BIN := ExampleHB_host
-else
 HOST_BIN := $(CORE_NAME)_host
-endif
 
 ifeq ($(HOST_SDL),3)
 HOST_SDL_PC := sdl3
@@ -26,6 +22,15 @@ else ifeq ($(HOST_SDL),2)
 HOST_SDL_PC := sdl2
 else
 $(error HOST_SDL must be 2 or 3 (got '$(HOST_SDL)'))
+endif
+
+# Homebrew SDL is invisible to PATH pkg-config (e.g. devkitPro's) unless
+# lib/pkgconfig is on PKG_CONFIG_PATH — prepend it automatically on macOS.
+ifeq ($(shell uname -s),Darwin)
+BREW_PREFIX := $(shell brew --prefix 2>/dev/null)
+ifneq ($(BREW_PREFIX),)
+export PKG_CONFIG_PATH := $(BREW_PREFIX)/lib/pkgconfig:$(PKG_CONFIG_PATH)
+endif
 endif
 
 HOST_PKG_CFLAGS := $(shell pkg-config --cflags $(HOST_SDL_PC) 2>/dev/null)
@@ -60,7 +65,7 @@ HOST_INCLUDES := \
 
 HOST_CFLAGS := -O2 -g -Wall -Wextra -std=c11 \
 	-include host/stubs/config.h \
-	$(HOST_DEFS) $(HOST_INCLUDES)
+	$(HOST_DEFS) $(HOST_INCLUDES) $(CORE_C_INCLUDES)
 
 HOST_SRCS := \
 	$(CORE_C_SOURCES) \
@@ -82,8 +87,13 @@ $(HOST_BIN): $(HOST_OBJS)
 	$(V)$(ECHO) [ LD HOST ] $@
 	$(V)$(HOST_CC) -o $@ $(HOST_OBJS) $(HOST_PKG_LIBS)
 
-# Explicit pattern under HOST_BUILD_DIR only (do not collide with sdk ARM rules).
+# Explicit patterns under HOST_BUILD_DIR only (do not collide with sdk ARM rules).
 $(HOST_BUILD_DIR)/src/%.o: src/%.c
+	$(V)mkdir -p $(dir $@)
+	$(V)$(ECHO) [ CC HOST ] $<
+	$(V)$(HOST_CC) $(HOST_CFLAGS) -MMD -MP -MF"$(@:%.o=%.d)" -c $< -o $@
+
+$(HOST_BUILD_DIR)/src/ccleste/%.o: src/ccleste/%.c
 	$(V)mkdir -p $(dir $@)
 	$(V)$(ECHO) [ CC HOST ] $<
 	$(V)$(HOST_CC) $(HOST_CFLAGS) -MMD -MP -MF"$(@:%.o=%.d)" -c $< -o $@

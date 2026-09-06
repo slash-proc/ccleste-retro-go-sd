@@ -22,6 +22,7 @@
 #include "odroid_settings.h"
 #include "odroid_input.h"
 #include "odroid_audio.h"
+#include "odroid_display.h"
 #include "common.h"
 #include "rom_manager.h"
 #include "main.h"
@@ -301,6 +302,16 @@ void lcd_set_refresh_rate(uint32_t frequency)
 uint32_t lcd_get_last_refresh_rate(void)
 {
     return lcd_refresh_hz;
+}
+
+odroid_display_scaling_t odroid_display_get_scaling_mode(void)
+{
+    return ODROID_DISPLAY_SCALING_FULL;
+}
+
+void odroid_display_set_scaling_mode(odroid_display_scaling_t mode)
+{
+    (void)mode;
 }
 
 void lcd_set_buffers(uint16_t *buf1, uint16_t *buf2)
