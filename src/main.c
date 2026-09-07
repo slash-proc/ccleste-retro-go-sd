@@ -1,10 +1,10 @@
 /*
  * Celeste Classic — GWHB homebrew for Retro-Go SD.
  *
- * Memory layout (new firmware pools: less AHB, more DTCM, ITCM for code):
- *   ITCM   — hot .text (celeste + audio + blit helpers), self-copied at boot
+ * Memory layout (new firmware pools: less AHB, more DTCM):
+ *   ITCM   — hot .text (celeste/audio/blit); firmware loads GWHB ITCM segment
  *   DTCM   — framebuffer + mix scratch (dtc_*)
- *   RAM_EMU — image, .rodata assets (gfx/font/tilemap/sfx), cold code, BSS
+ *   RAM_EMU — entry, cold code, .rodata assets, BSS
  *   AHB    — unused here (tight ~56 KiB heap; keep free for firmware)
  */
 
@@ -27,7 +27,6 @@
 
 #ifndef HOST_BUILD
 #include "gw_core_bridge.h"
-#include "stm32h7xx.h"
 #else
 #include "host_compat.h"
 #endif
@@ -89,36 +88,6 @@ struct track_info {
 
 struct track_info current_track = {-1, 0, 0};
 
-#ifndef HOST_BUILD
-/* Linker symbols from celeste.ld — ITCM image packed after .data in payload. */
-extern uint8_t __itcm_lma_start__;
-extern uint8_t __itcm_lma_end__;
-extern uint8_t __itcm_vma_start__;
-extern uint8_t __itcm_vma_end__;
-extern uint8_t __ITCM_CORE_START__;
-
-static void celeste_load_itcm(void)
-{
-    size_t n = (size_t)(&__itcm_lma_end__ - &__itcm_lma_start__);
-    if (n == 0) {
-        return;
-    }
-
-    itc_init();
-    memcpy(&__ITCM_CORE_START__, &__itcm_lma_start__, n);
-
-    /* Reserve the bump so later itc_* never overwrite hot code. */
-    void *reserved = itc_malloc(n);
-    if ((uintptr_t)reserved == 0xffffffffu || reserved != (void *)&__ITCM_CORE_START__) {
-        printf("Celeste: ITCM reserve failed (%p, n=%u)\n", reserved, (unsigned)n);
-    }
-
-    SCB_CleanDCache_by_Addr((uint32_t *)&__itcm_lma_start__, (int32_t)n);
-    SCB_InvalidateICache();
-}
-#else
-static void celeste_load_itcm(void) {}
-#endif
 
 static int iabs(int v)
 {
@@ -561,8 +530,8 @@ end:
     return ret;
 }
 
-ITCM_TEXT
 __attribute__((optimize("unroll-loops")))
+ITCM_TEXT
 static void blit_normal(uint8_t *src, uint16_t *framebuffer)
 {
     int offsetx = WIDTH / 2 - WIDTH_P8;
@@ -578,8 +547,8 @@ static void blit_normal(uint8_t *src, uint16_t *framebuffer)
     }
 }
 
-ITCM_TEXT
 __attribute__((optimize("unroll-loops")))
+ITCM_TEXT
 static void screen_blit_nn(uint8_t *src, uint16_t *framebuffer, uint16_t width)
 {
     uint16_t w1 = WIDTH_P8 - 1;
@@ -648,9 +617,6 @@ void app_main(uint8_t load_state, uint8_t start_paused, int8_t save_slot)
     odroid_dialog_choice_t options[] = {
         ODROID_DIALOG_CHOICE_LAST
     };
-
-    /* Hot code → ITCM before any celeste/audio/blit call. */
-    celeste_load_itcm();
 
     dtc_init();
     fb_celeste = dtc_calloc(1, FB_BYTES);

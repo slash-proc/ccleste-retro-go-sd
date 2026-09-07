@@ -24,8 +24,10 @@ CORE_C_DEFS += -DCELESTE_SLOW_CPU
 
 CORE_LDLIBS := -lm
 
-# Hot .text → ITCM (LMA packed in GWHB payload; copied at boot).
+# Hot .text → ITCM (.core_itcm); firmware loads the GWHB ITCM segment.
+# Hot *data* uses DTCM via dtc_*.
 CORE_LDSCRIPT := celeste.ld
+CORE_EXTRA_SEGMENTS := itcm:core_itcm
 
 GNW_CORE_SDK ?= sdk
 BUILD_DIR ?= build/$(PROJECT_KIND)
@@ -66,18 +68,6 @@ endif
 
 include $(GNW_CORE_SDK)/Makefile
 
-# Default sdk objcopy omits .itcm_text; rebuild a payload that includes the
-# ITCM LMA blob packed after .data (see celeste.ld).
-CELESTE_PAYLOAD := $(BUILD_DIR)/$(CORE_NAME)_payload.bin
-
-$(CELESTE_PAYLOAD): $(TARGET_ELF)
-	$(V)$(ECHO) [ BIN ITCM ] $(notdir $@)
-	$(V)$(CP) -O binary \
-		--only-section=.core_entry \
-		--only-section=.data \
-		--only-section=.itcm_text \
-		$< $@
-
 PACK_CORE     := $(GNW_CORE_SDK)/tools/pack_core.py
 PACK_HOMEBREW := $(GNW_CORE_SDK)/tools/pack_homebrew.py
 
@@ -106,10 +96,10 @@ assert sz <= 10*1024, f'cover too big: {sz}'; \
 w,h=img.size; assert w<=186 and h<=100, (w,h); \
 print(f'cover: $(COVER_JPG) ({w}x{h}, {sz} bytes)')"
 
-pack: $(CELESTE_PAYLOAD) $(COVER_JPG)
+pack: $(TARGET_BIN) $(COVER_JPG)
 	$(V)$(ECHO) [ PACK GWHB ] $(PACKED_BIN) version=$(CORE_VERSION)
 	$(V)python3 $(PACK_HOMEBREW) \
-		--elf $(TARGET_ELF) --bin $(CELESTE_PAYLOAD) \
+		--elf $(TARGET_ELF) --bin $(TARGET_BIN) \
 		--name "$(HB_NAME)" --version "$(CORE_VERSION)" \
 		--cover $(COVER_JPG) \
 		--out $(PACKED_BIN)

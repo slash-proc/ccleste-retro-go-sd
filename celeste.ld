@@ -2,11 +2,8 @@
  * Celeste Classic homebrew linker script.
  *
  * Segment 0 = RAM_EMU (entry + cold .text/.rodata/.data/.bss).
- *
- * Hot .text from celeste.o / celeste_audio.o (+ main .itcm_text) is linked at
- * ITCM VMA with LMA packed after .data in the GWHB payload. GWHB has no
- * multi-segment loader — app_main() copies the LMA blob into ITCM and
- * reserves it with itc_malloc before calling any ITCM code.
+ * Segment 1 = ITCM (.core_itcm) — hot .text only; firmware loads it via the
+ *             same GWHB segments[] path as CORE (pack_homebrew / pack_core).
  *
  * Hot *data* stays out of ITCM (DTCM via dtc_* / RAM_EMU for assets).
  */
@@ -35,10 +32,9 @@ SECTIONS
     KEEP(*(.gw_core_bridge_probe))
 
     . = ALIGN(4);
-    /* Cold code only — hot game/APU .text is claimed by .itcm_text below.
-     * With -ffunction-sections, code lives in .text.* — EXCLUDE must use
-     * .text* (EXCLUDE_FILE only applies to the immediately following pattern
-     * when listed as ".text .text.*"). Path wildcards do not cross '/'. */
+    /* Cold code — hot game/APU .text is claimed by .core_itcm.
+     * EXCLUDE_FILE applies to one pattern; use .text* (function-sections).
+     * Path wildcards do not cross '/'. */
     *(EXCLUDE_FILE(*celeste.o */celeste.o */*/celeste.o
                    *celeste_audio.o */celeste_audio.o */*/celeste_audio.o)
       .text*)
@@ -53,18 +49,40 @@ SECTIONS
     __CORE_INIT_ARRAY_END__ = .;
   } >RAM_EMU :text
 
+  . = ALIGN(8);
   .data :
   {
     *(.data*)
   } >RAM_EMU :data
 
-  /* LMA cursor for the ITCM image inside the flat payload. */
-  __itcm_lma_start__ = .;
+  /* Segment 0 file payload ends here (ITCM is a separate GWHB segment). */
+  __CORE_CODE_END__ = .;
 
-  .itcm_text __ITCM_CORE_START__ : AT (__itcm_lma_start__)
+  . = ALIGN(8);
+  .bss (NOLOAD) :
   {
-    . = ALIGN(4);
-    __itcm_vma_start__ = .;
+    *(.bss*)
+    *(COMMON)
+    . = ALIGN(8);
+  } >RAM_EMU :data
+
+  __CORE_BSS_END__ = .;
+
+  ASSERT(__CORE_BSS_END__ <= __RAM_EMU_END__,
+         "Error: homebrew RAM_EMU (code+data+bss) overflows RAM_EMU")
+
+  /*
+   * Segment 1: ITCM hot code. Firmware memcpy's this blob to
+   * __ITCM_CORE_START__ before jumping to app_main (no self-copy).
+   *
+   * 0x100 trap pad keeps real functions off address 0 (NULL BX → ARM mode
+   * HardFault is otherwise indistinguishable from P8music@0).
+   */
+  .core_itcm __ITCM_CORE_START__ :
+  {
+    FILL(0xe7fee7fe)
+    . = . + 0x100;
+    FILL(0)
 
     *celeste.o(.text*)
     */celeste.o(.text*)
@@ -75,30 +93,12 @@ SECTIONS
     *(.itcm_text*)
 
     . = ALIGN(4);
-    __itcm_vma_end__ = .;
-  } >ITCM :itcm
+    __CORE_ITCM_CODE_END__ = .;
+  } >ITCM AT>RAM_EMU :itcm
 
-  __itcm_lma_end__ = __itcm_lma_start__ + SIZEOF(.itcm_text);
-  __CORE_ITCM_CODE_END__ = __itcm_vma_end__;
-  __CORE_ITCM_BSS_END__ = __itcm_vma_end__;
+  __CORE_ITCM_BSS_END__ = __CORE_ITCM_CODE_END__;
 
-  /* Resume the RAM_EMU VMA after the ITCM LMA blob for NOLOAD .bss. */
-  . = __itcm_lma_end__;
-  __CORE_CODE_END__ = .;
-
-  .bss (NOLOAD) :
-  {
-    . = ALIGN(8);
-    *(.bss*)
-    *(COMMON)
-    . = ALIGN(8);
-  } >RAM_EMU :data
-
-  __CORE_BSS_END__ = .;
-
-  ASSERT(__CORE_BSS_END__ <= __RAM_EMU_END__,
-         "Error: core code+data+bss overflows RAM_EMU")
-  ASSERT(SIZEOF(.itcm_text) <= __ITCM_CORE_LENGTH__,
+  ASSERT(__CORE_ITCM_BSS_END__ <= __ITCM_CORE_START__ + __ITCM_CORE_LENGTH__,
          "Error: hot .text overflows ITCM (64 KiB)")
 
   __exidx_start = .;

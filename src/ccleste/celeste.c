@@ -156,7 +156,14 @@ static bool spikes_at(float x,float y,int w,int h,float xspd,float yspd);
 
 
 //exported /imported functions
+#ifndef HOST_BUILD
+/* Device: bind at link time so we never BX to NULL if set_call_func is
+ * skipped/reordered. pico8emu lives in ITCM (same as this file's .text). */
+extern int pico8emu(CELESTE_P8_CALLBACK_TYPE call, ...);
+static Celeste_P8_cb_func_t Celeste_P8_call = pico8emu;
+#else
 static Celeste_P8_cb_func_t Celeste_P8_call = NULL;
+#endif
 
 //exported
 void Celeste_P8_set_call_func(Celeste_P8_cb_func_t func) {
