@@ -1,4 +1,3 @@
 {
-  "$comment": "The hand-written half of this project's manifest. Everything else -- sizes, hashes, the firmware ABI, the display name -- is derived from the built bytes by scripts/make_manifest.py. Celeste Classic is self-contained: the user supplies nothing, so there is no converter to declare.",
   "originalSystem": "pico8"
 }
