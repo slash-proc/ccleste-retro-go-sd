@@ -1,3 +1,7 @@
 {
-  "originalSystem": "pico8"
+  "originalSystem": "pico8",
+  "runtime": {
+    "savestate": { "supported": true },
+    "save": { "supported": false }
+  }
 }
