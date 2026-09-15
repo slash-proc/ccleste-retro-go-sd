@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.0.4] - 2026-09-16
+
+### Fixed
+
+- Fixed `core_rand` to produce proper dash white-noise sound.
+
 ## [v0.0.3] - 2026-09-13
 
 ### Changed
